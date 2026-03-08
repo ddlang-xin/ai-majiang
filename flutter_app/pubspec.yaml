@@ -1,0 +1,22 @@
+name: ai_majiang
+description: AI麻将助手 - 实时捕捉麻将画面并发送给AI分析
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.10.5+9
+  http: ^1.1.0
+  permission_handler: ^11.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

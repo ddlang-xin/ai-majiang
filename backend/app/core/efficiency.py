@@ -1,6 +1,7 @@
 """
 牌效计算模块
 计算打牌后的进张数、听牌效率等
+优化版本 - 添加缓存和高效算法
 """
 
 from typing import List, Dict, Tuple, Optional
@@ -13,13 +14,18 @@ from app.core.rules import MahjongRuleEngine
 
 
 class TileEfficiency:
-    """牌效计算器"""
+    """牌效计算器 - 优化版"""
     
     def __init__(self):
         self.rule_engine = MahjongRuleEngine()
         # 所有进张牌（可以摸到的牌）
         self._all_draws: List[Tile] = []
         self._init_draws()
+        # 缓存已计算的结果
+        self._cache: Dict[str, Dict] = {}
+        # 简化版all_tiles用于快速检查
+        self._simple_tiles: List[Tile] = []
+        self._init_simple_tiles()
     
     def _init_draws(self):
         """初始化所有可能的进张牌"""
@@ -35,6 +41,25 @@ class TileEfficiency:
                 honor=honor
             ))
     
+    def _init_simple_tiles(self):
+        """初始化简化版牌列表（用于快速检查）"""
+        # 只使用每个种类的一张代表牌，用于快速听牌检查
+        for suit in [TileType.WAN, TileType.TONG, TileType.TIAO]:
+            for num in range(1, 10):
+                self._simple_tiles.append(Tile(
+                    tile_type=suit,
+                    number=TileNumber(num)
+                ))
+        for honor in HonorTile:
+            self._simple_tiles.append(Tile(
+                tile_type=TileType.ZI,
+                honor=honor
+            ))
+    
+    def _get_cache_key(self, tiles: List[Tile]) -> str:
+        """生成缓存键"""
+        return "".join(sorted([tile_to_string(t) for t in tiles]))
+    
     def calculate_efficiency(self, tiles: List[Tile], discarded: List[Tile] = None) -> Dict:
         """
         计算牌效
@@ -43,30 +68,46 @@ class TileEfficiency:
         if len(tiles) != 13:
             return {"error": "需要13张手牌"}
         
+        # 检查缓存
+        cache_key = self._get_cache_key(tiles)
+        if cache_key in self._cache:
+            result = self._cache[cache_key].copy()
+            # 即使有缓存也要更新打牌建议（因为depends on discarded）
+            if discarded:
+                discarded_counter = Counter(discarded)
+                remaining_tiles = self._get_remaining_tiles(discarded_counter)
+                melds_analysis = self._analyze_melds(tiles)
+                result["discard_advice"] = self._get_discard_advice(tiles, remaining_tiles, melds_analysis)
+            return result
+        
         discarded = discarded or []
         
         # 统计已经打过的牌
         discarded_counter = Counter(discarded)
         
-        # 计算每张牌的剩余数量
+        # 计算每种牌的剩余数量
         remaining_tiles = self._get_remaining_tiles(discarded_counter)
         
-        # 计算各种指标
-        shanten = self._calc_shanten(tiles)
-        draw_count = self._count_draws(tiles, remaining_tiles)
-        tenpai_count = self._count_tenpai_draws(tiles, remaining_tiles)
+        # 计算各种指标 - 使用优化后的方法
+        shanten = self._calc_shanten_fast(tiles)
+        draw_count = self._count_draws_fast(tiles, remaining_tiles)
+        tenpai_count = self._count_tenpai_draws_fast(tiles, remaining_tiles)
         
         # 分析搭子
         melds_analysis = self._analyze_melds(tiles)
         
-        return {
-            "shanten": shanten,              # 向听数
-            "draw_count": draw_count,        # 进张数
-            "tenpai_count": tenpai_count,    # 听牌进张数
-            "tenpai_rate": round(tenpai_count / max(draw_count, 1), 2),  # 听牌率
-            "melds": melds_analysis,         # 搭子分析
+        result = {
+            "shanten": shanten,
+            "draw_count": draw_count,
+            "tenpai_count": tenpai_count,
+            "tenpai_rate": round(tenpai_count / max(draw_count, 1), 2),
+            "melds": melds_analysis,
             "discard_advice": self._get_discard_advice(tiles, remaining_tiles, melds_analysis)
         }
+        
+        # 缓存结果
+        self._cache[cache_key] = result
+        return result
     
     def _get_remaining_tiles(self, discarded: Counter) -> Counter:
         """计算剩余牌数（每种4张减去已打出的）"""
@@ -83,97 +124,133 @@ class TileEfficiency:
         
         return remaining
     
-    def _calc_shanten(self, tiles: List[Tile]) -> int:
-        """计算向听数（距离听牌还差几张）"""
-        # 简单实现：尝试每种牌打出，计算最小向听数
-        best_shanten = 8  # 最大向听数
+    def _calc_shanten_fast(self, tiles: List[Tile]) -> int:
+        """
+        快速计算向听数
+        使用简化的向听数算法，避免深度递归
+        """
+        # 统计每种牌的数量
+        counter = Counter(tiles)
         
-        for i, tile in enumerate(tiles):
-            remaining = tiles[:i] + tiles[i+1:]
-            # 简化：直接检查是否听牌
-            if self.rule_engine.is_ting(remaining):
-                return 0
+        # 统计面子数（刻子+顺子潜力）
+        complete_melds = 0  # 完整面子
+        pair_count = 0     # 对子数
         
-        # 如果不打牌能听牌，向听数为0
-        if self.rule_engine.is_ting(tiles):
+        # 统计刻子
+        for tile, count in counter.items():
+            if count >= 3:
+                complete_melds += count // 3
+        
+        # 统计对子
+        for tile, count in counter.items():
+            if count >= 2:
+                pair_count += 1
+        
+        # 简化：假设数牌可以组成顺子
+        # 统计顺子潜力
+        for suit in [TileType.WAN, TileType.TONG, TileType.TIAO]:
+            suit_tiles = [t for t in tiles if t.tile_type == suit]
+            nums_counter = Counter([t.number.value for t in suit_tiles])
+            
+            # 计算顺子（相邻的3张牌）
+            for num in range(1, 8):
+                if nums_counter[num] > 0 and nums_counter[num+1] > 0 and nums_counter[num+2] > 0:
+                    complete_melds += 1
+        
+        # 限制最大面子数
+        complete_melds = min(complete_melds, 4)
+        pair_count = min(pair_count, 1)
+        
+        # 向听数 = 6 - (完整面子 * 2 + 对子)
+        # 最大向听数为6（13张牌需要6次进张才能听牌）
+        shanten = 6 - (complete_melds * 2 + pair_count)
+        
+        # 如果已经有4组面子+1对子，听牌
+        if complete_melds >= 4 and pair_count >= 1:
             return 0
         
-        # 否则计算大概的向听数
-        # 统计面子数
-        melds = self._count_melds(tiles)
-        complete_melds = melds["complete"]  # 完整面子
-        pair_count = melds["pair"]           # 对子
-        
-        # 向听数 = 8 - (完整面子 * 2 + 对子) 
-        shanten = 8 - (complete_melds * 2 + min(pair_count, 1))
         return max(0, shanten)
     
     def _count_melds(self, tiles: List[Tile]) -> Dict:
         """统计面子数"""
         counter = Counter(tiles)
-        
+
         complete = 0  # 完整面子（刻子+顺子）
         pair = 0     # 对子
-        
+
         # 统计刻子
         for tile, count in counter.items():
             if count >= 3:
                 complete += count // 3
-        
+
         # 统计对子
         for tile, count in counter.items():
             if count >= 2:
                 pair += 1
-        
+
         # 简化：假设数牌可以组成顺子
         # 统计顺子潜力
         for suit in [TileType.WAN, TileType.TONG, TileType.TIAO]:
             suit_nums = [t.number.value for t in tiles if t.tile_type == suit]
             nums_counter = Counter(suit_nums)
-            
+
             # 计算顺子
             for num in range(1, 8):
                 if nums_counter[num] > 0 and nums_counter[num+1] > 0 and nums_counter[num+2] > 0:
                     complete += 1
-        
+
         return {"complete": min(complete, 4), "pair": min(pair, 1)}
     
-    def _count_draws(self, tiles: List[Tile], remaining: Counter) -> int:
-        """计算进张数（能摸到的有效牌数量）"""
+    def _count_draws_fast(self, tiles: List[Tile], remaining: Counter) -> int:
+        """
+        快速计算进张数
+        通过比较向听数改善来判断
+        """
+        shanten_before = self._calc_shanten_fast(tiles)
+        
+        # 如果已经听牌，返回剩余牌数
+        if shanten_before == 0:
+            return sum(remaining.values())
+        
+        # 限制检查范围：只检查与手牌相邻的牌
         total = 0
+        counter = Counter(tiles)
         
         for tile in self._all_draws:
+            # 跳过剩余数为0的牌
+            if remaining.get(tile, 0) == 0:
+                continue
+            
+            # 尝试加入这张牌
             test_tiles = tiles + [tile]
-            # 检查是否有效（进张后向听数不增加）
-            if len(test_tiles) == 14:
-                test_tiles = test_tiles[:-1]  # 去掉一张测试
-                shanten_before = self._calc_shanten(tiles)
-                shanten_after = self._calc_shantes(test_tiles)
-                if shanten_after <= shanten_before:
-                    total += remaining.get(tile, 0)
+            shanten_after = self._calc_shanten_fast(test_tiles)
+            
+            # 如果向听数减少或不变，则是有效进张
+            if shanten_after < shanten_before:
+                total += remaining.get(tile, 0)
         
         return total
     
-    def _count_tenpai_draws(self, tiles: List[Tile], remaining: Counter) -> int:
-        """计算听牌进张数"""
+    def _count_tenpai_draws_fast(self, tiles: List[Tile], remaining: Counter) -> int:
+        """
+        快速计算听牌进张数
+        通过检查向听数是否为0来判断
+        """
         total = 0
         
-        # 尝试每种牌作为进张
         for tile in self._all_draws:
+            if remaining.get(tile, 0) == 0:
+                continue
+            
+            # 尝试加入这张牌，然后打出一张
             test_tiles = tiles + [tile]
-            if len(test_tiles) == 14:
-                # 去掉一张，看是否听牌
-                for i in range(13):
-                    remaining_tiles = test_tiles[:i] + test_tiles[i+1:]
-                    if self.rule_engine.is_ting(remaining_tiles):
-                        total += remaining.get(tile, 0)
-                        break
+            shanten_with_tile = self._calc_shanten_fast(test_tiles)
+            
+            # 如果加入这张牌后变成听牌（向听数0），则这张牌是听牌进张
+            if shanten_with_tile == 0:
+                total += remaining.get(tile, 0)
         
         return total
-    
-    def _calc_shantes(self, tiles: List[Tile]) -> int:
-        """计算向听数（内部方法）"""
-        return self._calc_shanten(tiles)
     
     def _analyze_melds(self, tiles: List[Tile]) -> List[Dict]:
         """分析搭子"""

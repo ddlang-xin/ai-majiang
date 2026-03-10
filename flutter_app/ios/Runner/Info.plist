@@ -43,6 +43,8 @@
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>AI麻将助手需要使用相机来捕捉麻将画面</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AI麻将助手需要访问相册来选择图片进行识别</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

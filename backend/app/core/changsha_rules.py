@@ -197,45 +197,56 @@ class ChangshaMahjong:
         return False
     
     def _can_form_melds(self, tiles: List[int]) -> bool:
-        """检查牌能否组成3面子（刻子或顺子）"""
+        """检查牌能否组成3面子（刻子或顺子）- 迭代实现"""
         if not tiles:
             return True
         if len(tiles) % 3 != 0:
             return False
         
-        counter = Counter(tiles)
-        tile_list = list(counter.keys())
+        # 使用迭代而非递归
+        return self._can_form_melds_iter(tiles)
+    
+    def _can_form_melds_iter(self, tiles: List[int]) -> bool:
+        """迭代实现：检查牌能否组成面子"""
+        # 复制牌列表用于操作
+        remaining = sorted(tiles)
         
-        # 取最小的牌
-        tile = min(tile_list)
-        count = counter[tile]
+        while remaining:
+            # 取最小的牌
+            tile = remaining[0]
+            count = remaining.count(tile)
+            
+            # 尝试组成刻子
+            if count >= 3:
+                # 移除3张刻子
+                for _ in range(3):
+                    remaining.remove(tile)
+                continue
+            
+            # 尝试组成顺子（仅限数牌）
+            suit = ChangshaTile.get_suit(tile)
+            num = ChangshaTile.get_number(tile)
+            
+            if num <= 7:
+                next1 = tile + 1
+                next2 = tile + 2
+                
+                # 检查能否组成顺子
+                c1 = remaining.count(next1)
+                c2 = remaining.count(next2)
+                
+                if c1 >= count and c2 >= count:
+                    # 移除顺子
+                    remaining.remove(tile)
+                    for _ in range(count):
+                        remaining.remove(next1)
+                        remaining.remove(next2)
+                    continue
+            
+            # 无法组成刻子或顺子
+            return False
         
-        # 尝试组成刻子
-        if count >= 3:
-            new_counter = Counter(counter)
-            new_counter[tile] -= 3
-            remaining = [t for t in tiles if new_counter[t] > 0]
-            if self._can_form_melds(remaining):
-                return True
-        
-        # 尝试组成顺子（仅限数牌）
-        suit = ChangshaTile.get_suit(tile)
-        num = ChangshaTile.get_number(tile)
-        
-        # 检查是否能组成顺子 (num, num+1, num+2)
-        if num <= 7:
-            next1 = tile + 1  # 同一花色的下一张
-            next2 = tile + 2
-            if counter.get(next1, 0) >= count and counter.get(next2, 0) >= count:
-                new_counter = Counter(counter)
-                new_counter[tile] -= count
-                new_counter[next1] -= count
-                new_counter[next2] -= count
-                remaining = [t for t in tiles if new_counter[t] > 0]
-                if self._can_form_melds(remaining):
-                    return True
-        
-        return False
+        return True
     
     def check_hu(
         self,

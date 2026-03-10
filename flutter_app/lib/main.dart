@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
+import 'pages/realtime_battle_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -112,6 +113,8 @@ class _MainNavigationState extends State<MainNavigation> {
   Widget build(BuildContext context) {
     final pages = [
       HomePage(cameras: widget.cameras, settings: _settings),
+      if (widget.cameras != null && widget.cameras!.isNotEmpty)
+        RealtimeBattlePage(cameras: widget.cameras!),
       AnalysisHistoryPage(),
       SettingsPage(settings: _settings, onSettingsChanged: _updateSettings),
     ];
@@ -125,18 +128,24 @@ class _MainNavigationState extends State<MainNavigation> {
             _currentIndex = index;
           });
         },
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.camera_alt_outlined),
             selectedIcon: Icon(Icons.camera_alt),
             label: '拍照',
           ),
-          NavigationDestination(
+          if (widget.cameras != null && widget.cameras!.isNotEmpty)
+            const NavigationDestination(
+              icon: Icon(Icons.videocam_outlined),
+              selectedIcon: Icon(Icons.videocam),
+              label: '实时',
+            ),
+          const NavigationDestination(
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: '历史',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: '设置',
@@ -276,6 +285,25 @@ class _HomePageState extends State<HomePage> {
   }
 
   AnalysisResult _generateMockResult() {
+    // 模拟识别到的麻将牌数据
+    final recognizedTiles = [
+      RecognizedTile(tile: '🀇', name: '一万', confidence: 0.98, suit: '万'),
+      RecognizedTile(tile: '🀇', name: '一万', confidence: 0.95, suit: '万'),
+      RecognizedTile(tile: '🀈', name: '二万', confidence: 0.97, suit: '万'),
+      RecognizedTile(tile: '🀉', name: '三万', confidence: 0.96, suit: '万'),
+      RecognizedTile(tile: '🀊', name: '四万', confidence: 0.94, suit: '万'),
+      RecognizedTile(tile: '🀋', name: '五万', confidence: 0.99, suit: '万'),
+      RecognizedTile(tile: '🀌', name: '六万', confidence: 0.97, suit: '万'),
+      RecognizedTile(tile: '🀍', name: '七万', confidence: 0.93, suit: '万'),
+      RecognizedTile(tile: '🀎', name: '八万', confidence: 0.91, suit: '万'),
+      RecognizedTile(tile: '🀏', name: '九万', confidence: 0.96, suit: '万'),
+      RecognizedTile(tile: '🀀', name: '东风', confidence: 0.92, suit: '风'),
+      RecognizedTile(tile: '🀁', name: '南风', confidence: 0.88, suit: '风'),
+      RecognizedTile(tile: '🀂', name: '西风', confidence: 0.95, suit: '风'),
+      RecognizedTile(tile: '🀃', name: '北风', confidence: 0.90, suit: '风'),
+      RecognizedTile(tile: '🀄', name: '红中', confidence: 0.99, suit: '箭'),
+    ];
+    
     return AnalysisResult(
       recommendation: '听牌！建议打出 🀇 一万',
       tiles: ['🀇', '🀈', '🀉', '🀊', '🀋', '🀌', '🀍', '🀎', '🀏', '🀀', '🀁', '🀂', '🀃', '🀄'],
@@ -284,6 +312,7 @@ class _HomePageState extends State<HomePage> {
       handType: '断幺九',
       tingCount: 1,
       isHu: false,
+      recognizedTiles: recognizedTiles,
     );
   }
 
@@ -306,6 +335,18 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.flash_off),
             onPressed: () {},
           ),
+          if (widget.cameras != null && widget.cameras!.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              tooltip: '实时对战',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => RealtimeBattlePage(cameras: widget.cameras!),
+                  ),
+                );
+              },
+            ),
         ],
       ),
       body: _buildBody(),
@@ -475,15 +516,253 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAnalysisCard(AnalysisResult result) {
+  // Glassmorphism 风格识别结果卡片
+  Widget _buildRecognitionCard(List<RecognizedTile> recognizedTiles) {
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.green[300]!, width: 1),
+        // Glassmorphism 效果
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.25),
+            Colors.white.withOpacity(0.15),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
-      child: Column(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ColorFilter.mode(
+            Colors.white.withOpacity(0.2),
+            BlendMode.srcOver,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 标题
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.document_scanner_outlined,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      '🔍 识别结果',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${recognizedTiles.length} 张',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // 识别到的麻将牌列表
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: recognizedTiles.map((tile) => _buildTileChip(tile)).toList(),
+                ),
+                
+                const SizedBox(height: 16),
+                
+                // 置信度统计
+                _buildConfidenceStats(recognizedTiles),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  // 单个麻将牌识别结果Chip
+  Widget _buildTileChip(RecognizedTile tile) {
+    final confidencePercent = (tile.confidence * 100).toStringAsFixed(0);
+    final confidenceColor = _getConfidenceColor(tile.confidence);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            tile.tile,
+            style: const TextStyle(fontSize: 22),
+          ),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                tile.name,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: tile.confidence,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: confidenceColor,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$confidencePercent%',
+                    style: TextStyle(
+                      color: confidenceColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 根据置信度获取颜色
+  Color _getConfidenceColor(double confidence) {
+    if (confidence >= 0.95) return Colors.green[300]!;
+    if (confidence >= 0.90) return Colors.lightGreen[200]!;
+    if (confidence >= 0.80) return Colors.yellow[200]!;
+    return Colors.orange[200]!;
+  }
+  
+  // 置信度统计
+  Widget _buildConfidenceStats(List<RecognizedTile> tiles) {
+    final high = tiles.where((t) => t.confidence >= 0.95).length;
+    final medium = tiles.where((t) => t.confidence >= 0.90 && t.confidence < 0.95).length;
+    final low = tiles.where((t) => t.confidence < 0.90).length;
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildStatItem('高置信', high, Colors.green[300]!),
+          Container(width: 1, height: 30, color: Colors.white.withOpacity(0.3)),
+          _buildStatItem('中置信', medium, Colors.yellow[200]!),
+          Container(width: 1, height: 30, color: Colors.white.withOpacity(0.3)),
+          _buildStatItem('低置信', low, Colors.orange[200]!),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildStatItem(String label, int count, Color color) {
+    return Column(
+      children: [
+        Text(
+          '$count',
+          style: TextStyle(
+            color: color,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: 11,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnalysisCard(AnalysisResult result) {
+    return Column(
+      children: [
+        // 识别结果 - Glassmorphism 风格
+        if (result.recognizedTiles.isNotEmpty)
+          _buildRecognitionCard(result.recognizedTiles),
+        
+        // AI分析结果
+        Container(
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.green[300]!, width: 1),
+          ),
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 标题栏
@@ -594,6 +873,37 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+// ==================== 识别结果模型 ====================
+class RecognizedTile {
+  final String tile;        // 麻将牌emoji
+  final String name;       // 牌名
+  final double confidence; // 置信度 0-1
+  final String suit;       // 花色 (万/条/筒/风/箭)
+  
+  RecognizedTile({
+    required this.tile,
+    required this.name,
+    required this.confidence,
+    required this.suit,
+  });
+  
+  factory RecognizedTile.fromJson(Map<String, dynamic> json) {
+    return RecognizedTile(
+      tile: json['tile'] ?? '',
+      name: json['name'] ?? '',
+      confidence: (json['confidence'] ?? 0.0).toDouble(),
+      suit: json['suit'] ?? '',
+    );
+  }
+  
+  Map<String, dynamic> toJson() => {
+    'tile': tile,
+    'name': name,
+    'confidence': confidence,
+    'suit': suit,
+  };
+}
+
 // ==================== 分析结果模型 ====================
 class AnalysisResult {
   final String recommendation;
@@ -603,6 +913,7 @@ class AnalysisResult {
   final String handType;
   final int tingCount;
   final bool isHu;
+  final List<RecognizedTile> recognizedTiles; // 识别到的牌及置信度
   
   AnalysisResult({
     required this.recommendation,
@@ -612,6 +923,7 @@ class AnalysisResult {
     this.handType = '',
     this.tingCount = 0,
     this.isHu = false,
+    this.recognizedTiles = const [],
   });
   
   factory AnalysisResult.fromJson(Map<String, dynamic> json) {
@@ -623,6 +935,9 @@ class AnalysisResult {
       handType: json['handType'] ?? '',
       tingCount: json['tingCount'] ?? 0,
       isHu: json['isHu'] ?? false,
+      recognizedTiles: (json['recognizedTiles'] as List<dynamic>?)
+          ?.map((e) => RecognizedTile.fromJson(e))
+          .toList() ?? [],
     );
   }
 }
